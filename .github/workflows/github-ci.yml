@@ -1,0 +1,206 @@
+name: Build ros2 package (GitHub runners)
+
+# Builds the ros2 Debian package on GitHub's own ARM64 runners and publishes it
+# to Vulcan.
+#
+# This is the edgematic-studio pattern: build wherever, publish to Vulcan. It
+# needs no runner-fleet onboarding -- only the artifact namespace and publisher
+# role, which any Vulcan publisher needs regardless of where it builds.
+#
+# It exists alongside vulcan-ci.yml, which builds on a self-hosted Vulcan
+# runner. Whichever proves out can become the only one.
+#
+# The known risk is disk: GitHub's public ubuntu-24.04-arm runners carry ~14 GB
+# free, and a full ROS 2 source tree is not obviously smaller than that. The
+# free-space step and the df reporting below exist to find out.
+
+on:
+  push:
+    branches:
+      - sima/jazzy
+    tags:
+      - sima/jazzy/v*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  build:
+    name: Build ros2 deb (arm64)
+    runs-on: ubuntu-24.04-arm
+    # GitHub's ceiling is 360. If the build needs more than this, that is the
+    # argument for the Vulcan runner.
+    timeout-minutes: 350
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      deb: ${{ steps.build.outputs.deb }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          # packaging/build-ros2-deb.sh derives the version from `git describe`.
+          # A shallow clone would make every build 0~untagged.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Reclaim disk
+        run: |
+          set -euo pipefail
+          echo "before:"; df -h /
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/powershell || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "after:"; df -h /
+
+      - name: Build the container
+        run: |
+          set -euo pipefail
+          docker build \
+            --file packaging/Dockerfile.build \
+            --tag ros2-build:${GITHUB_SHA} \
+            .
+          df -h /
+
+      - name: Build the package
+        id: build
+        run: |
+          set -euo pipefail
+
+          # The checkout is owned by the runner user while the container runs
+          # as root, so git would reject the repository as "dubious ownership"
+          # and every version would silently fall back to 0~untagged.
+          docker run --rm \
+            --volume "${PWD}:/workspace" \
+            --workdir /workspace \
+            --env GIT_CONFIG_COUNT=1 \
+            --env GIT_CONFIG_KEY_0=safe.directory \
+            --env GIT_CONFIG_VALUE_0=/workspace \
+            ros2-build:${GITHUB_SHA} \
+            packaging/build-ros2-deb.sh
+
+          deb="$(find dist -name 'ros2_*.deb' -print -quit)"
+          test -n "${deb}" || { echo "No package was produced." >&2; exit 1; }
+
+          version="$(docker run --rm -v "${PWD}:/workspace" -w /workspace \
+            ros2-build:${GITHUB_SHA} dpkg-deb --field "${deb}" Version)"
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "deb=${deb}"         >> "${GITHUB_OUTPUT}"
+          df -h /
+
+      - name: Drop the build tree before uploading
+        # .build holds the colcon workspace; only dist/ is wanted from here on.
+        run: rm -rf .build && df -h /
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros2-deb-arm64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  test-install:
+    name: Install the package in clean bookworm
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v4
+        with:
+          name: ros2-deb-arm64
+          path: dist
+
+      - name: Install and smoke-test
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --volume "${PWD}/dist:/dist:ro" \
+            debian:bookworm bash -euo pipefail -c '
+              apt-get update -qq
+              # Resolves the package'"'"'s declared runtime dependencies from
+              # Debian, which is the assertion that matters: the deb has to be
+              # installable from a stock bookworm base.
+              apt-get install -y -qq /dist/ros2_*.deb
+
+              set +u
+              source /usr/local/ros2/local_setup.bash
+              set -u
+
+              ros2 --help > /dev/null
+              ros2 pkg prefix rosbag2_storage
+              echo "ros2 package installs and runs."
+            '
+
+  resolve-config:
+    name: Resolve Vulcan config
+    needs: test-install
+    permissions:
+      contents: read
+      id-token: write
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
+    with:
+      vulcan_env: ${{ vars.VULCAN_ENV || 'stg' }}
+
+  publish:
+    name: Publish to Vulcan
+    # build -> test -> publish. The house guide is explicit that publishing an
+    # untested artifact is wrong, so test-install gates this.
+    needs:
+      - build
+      - test-install
+      - resolve-config
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
+      cloudfront_distribution_id: ${{ needs.resolve-config.outputs.artifact_cloudfront_distribution_id }}
+      artifact_folder: arm64
+      artifact_pattern: ros2-deb-arm64
+      artifact_glob: "*"
+      min_artifact_count: 1
+      publish_manifest: true
+      cleanup_github_artifacts: true
+
+  promote-latest:
+    name: Promote latest.tag
+    needs:
+      - resolve-config
+      - publish
+    permissions:
+      contents: read
+      id-token: write
+    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
+    with:
+      aws_region: ${{ needs.resolve-config.outputs.aws_region }}
+      environment_name: ${{ needs.resolve-config.outputs.vulcan_env }}
+      bucket: ${{ needs.resolve-config.outputs.artifact_bucket }}
+      role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
+      sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
+      artifact_folder: arm64
+      validate_manifest: true
+
+# edgematic-studio additionally runs a `verify-published` job between publish
+# and promote-latest, reinstalling from the CDN through sima-cli. Left out here
+# because vulcan-publish-artifacts exposes no outputs, so the published URL
+# would have to be reconstructed -- and the branch segment is percent-encoded
+# once for the S3 key and again for the viewer path, which is easy to get
+# wrong. Worth adding once a real publish shows the actual URL. The publish
+# workflow does run its own CloudFront verification internally.

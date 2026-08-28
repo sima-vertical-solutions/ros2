@@ -27,10 +27,11 @@ jobs:
     uses: sima-neat/.github/.github/workflows/vulcan-build.yml@agent/vertical-solutions-staging
     with:
       vulcan_env: stg
-      sdk_cache: sdk-latest
+      # Barebones: a plain linux/arm64 machine. The `sdk` profile would also
+      # request sdk-build and sdk-latest, pinning us to a Neat SDK snapshot
+      # this build has no use for -- it runs in our own Debian container.
+      runner_profile: ubuntu
       capacity: default
-      # We build ros2 in our own eLxr container, so neither the Neat SDK
-      # container nor its sima-cli setup is wanted here.
       ensure_sdk_container: false
       artifact_name: ros2-runner-probe
       artifact_path: _probe/*

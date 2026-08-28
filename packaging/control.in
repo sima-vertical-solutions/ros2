@@ -1,0 +1,25 @@
+# Template for the ros2 package's Debian control file.
+#
+# Carries over the deb_info block from the ros2 recipe in swsoc-elxr-config
+# (boards/arm64/simaai/packages/ros2/ros2.yaml). Placeholders are substituted
+# by packaging/build-ros2-deb.sh:
+#
+#   @VERSION@         packaging/version, plus a +sima.<date>.<sha> suffix
+#   @ARCH@            the build host's Debian architecture
+#   @INSTALLED_SIZE@  measured from the staged tree
+#   @DEPENDS@         packaging/runtime-depends.txt, comma separated
+#
+# Lines beginning with # are stripped before the control file is written.
+Package: ros2
+Version: @VERSION@
+Architecture: @ARCH@
+Section: embedded
+Priority: optional
+Maintainer: Open Source Robotics Foundation, Inc.
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@
+Description: Robot Operating System 2 (ROS2)
+ ROS 2 Jazzy, built from the repository set pinned in ros2.repos, installed
+ under /usr/local/ros2. Includes the SiMa rosbag2 fork, whose MCAP storage
+ plugin evicts written pages from the page cache so long recordings do not
+ starve the SoC's contiguous memory allocator.

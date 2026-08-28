@@ -1,0 +1,145 @@
+name: Build ros2 package
+
+# Builds the ros2 Debian package natively on an ARM64 Vulcan runner.
+#
+# Publishing to Vulcan is deliberately not wired up yet -- see the note at the
+# bottom of this file for what it needs and why it is blocked.
+
+on:
+  push:
+    branches:
+      - sima/jazzy
+    tags:
+      - sima/jazzy/v*
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+  packages: read
+
+# A full ROS 2 tree takes hours. Never run two on the same ref; a newer push to
+# a branch supersedes the one in flight, but a tag build always runs to
+# completion because its artifact is the release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  resolve-config:
+    name: Resolve Vulcan config
+    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@agent/vertical-solutions-staging
+    with:
+      vulcan_env: stg
+
+  build:
+    name: Build ros2 deb
+    needs: resolve-config
+    uses: sima-neat/.github/.github/workflows/vulcan-build.yml@agent/vertical-solutions-staging
+    with:
+      vulcan_env: stg
+      # A plain linux/arm64 machine. The `sdk` profile would additionally
+      # request sdk-build and sdk-latest, tying this to a Neat SDK snapshot
+      # the build never uses -- it runs in packaging/Dockerfile.build.
+      runner_profile: ubuntu
+      capacity: default
+
+      # packaging/build-ros2-deb.sh derives the package version from
+      # `git describe`, which needs the full history and tags. The default
+      # fetch_depth of 1 would leave every build as 0~untagged.
+      fetch_depth: 0
+      checkout_submodules: "false"
+
+      # The Neat SDK container is not wanted: this package builds in the
+      # plain-bookworm image defined by packaging/Dockerfile.build, which
+      # deliberately has no ROS 2 in it.
+      ensure_sdk_container: false
+
+      artifact_name: ros2-deb
+      artifact_path: dist/*
+      artifact_retention_days: 14
+
+      build_command: |
+        set -euo pipefail
+
+        echo "::group::Runner"
+        uname -srm
+        echo "cpus = $(nproc)"
+        awk '/MemTotal/ {printf "mem  = %.1f GiB\n", $2/1048576}' /proc/meminfo
+        df -h .
+        echo "::endgroup::"
+
+        echo "::group::Build the container"
+        # Context is the repository root; Dockerfile.build COPYs
+        # packaging/build-depends.txt from it.
+        docker build \
+          --file packaging/Dockerfile.build \
+          --tag ros2-build:${GITHUB_SHA} \
+          .
+        echo "::endgroup::"
+
+        echo "::group::Build the package"
+        # The checkout is owned by the runner user and the container runs as
+        # root, so git would refuse to read the repository as "dubious
+        # ownership". Scope the exemption to this invocation rather than
+        # writing to a global gitconfig.
+        docker run --rm \
+          --volume "${PWD}:/workspace" \
+          --workdir /workspace \
+          --env GIT_CONFIG_COUNT=1 \
+          --env GIT_CONFIG_KEY_0=safe.directory \
+          --env GIT_CONFIG_VALUE_0=/workspace \
+          ros2-build:${GITHUB_SHA} \
+          packaging/build-ros2-deb.sh
+        echo "::endgroup::"
+
+      post_build_command: |
+        set -euo pipefail
+
+        deb="$(find dist -name 'ros2_*.deb' -print -quit)"
+        test -n "${deb}" || { echo "No package was produced." >&2; exit 1; }
+
+        # dpkg-deb via the build image: the Vulcan runner's own OS is not
+        # guaranteed to be Debian-based.
+        fields="$(docker run --rm \
+          --volume "${PWD}:/workspace" --workdir /workspace \
+          ros2-build:${GITHUB_SHA} \
+          dpkg-deb --field "${deb}" Package Version Architecture Installed-Size)"
+
+        {
+          echo "### ros2 package"
+          echo
+          echo '```'
+          echo "${fields}"
+          echo '```'
+          echo
+          echo "Size on disk: $(du -h "${deb}" | cut -f1)"
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+        df -h .
+
+# ---------------------------------------------------------------------------
+# Publishing, once the artifact namespace is registered
+#
+# vulcan-publish-artifacts refuses to run for a repository that is not in
+# `.artifacts.namespace_registry` in the Vulcan environment config, so these
+# two jobs are left out rather than added and left failing. When
+# sima-vertical-solutions/ros2 is registered with a namespace and a publisher
+# role, they append here:
+#
+#   publish:        vulcan-publish-artifacts.yml   needs: [resolve-config, build]
+#   promote-latest: vulcan-update-latest-artifacts.yml   needs: publish
+#
+# Both take artifact_namespace and artifact_folder, as in
+# sima-vertical-solutions/ci-test.
+#
+# The house convention is build -> test -> publish -> verify -> latest, where
+# `verify` installs what the CDN actually serves before latest.tag is moved.
+# For this package `test` means installing the deb in a clean bookworm
+# container and checking `ros2 --help` and `ros2 pkg prefix rosbag2_storage`.
+# That gate belongs between build and publish when publishing lands.
+# ---------------------------------------------------------------------------
