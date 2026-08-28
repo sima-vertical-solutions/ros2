@@ -341,8 +341,8 @@ repositories:
     version: jazzy
   ros2/rosbag2:
     type: git
-    url: https://github.com/ros2/rosbag2.git
-    version: jazzy
+    url: https://github.com/sima-vertical-solutions/rosbag2.git
+    version: sima/jazzy
   ros2/rosidl:
     type: git
     url: https://github.com/ros2/rosidl.git
