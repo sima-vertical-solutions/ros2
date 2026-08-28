@@ -75,6 +75,7 @@ python3-mypy
 python3-numpy
 python3-packaging
 python3-pycodestyle
+python3-pykdl
 python3-pyqt5
 python3-pytest
 python3-pytest-cov
