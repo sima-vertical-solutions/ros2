@@ -40,12 +40,19 @@ BUILD="${WORKDIR}/build"
 STAGE="${WORKDIR}/stage"
 INSTALL_PREFIX="/usr/local/ros2"
 
-MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
-DEB_ARCH="$(dpkg-architecture -qDEB_HOST_ARCH)"
-
 log() { printf '\n=== %s ===\n' "$*"; }
 
 # ---------------------------------------------------------------- preflight --
+
+# Checked before anything uses them, so a missing tool names itself rather than
+# surfacing as "command not found" from whichever line happened to run first.
+# dpkg-architecture and dpkg-deb both come from dpkg-dev.
+for tool in vcs colcon dpkg-architecture dpkg-deb; do
+    command -v "${tool}" >/dev/null || { echo "Missing required tool: ${tool}" >&2; exit 1; }
+done
+
+MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
+DEB_ARCH="$(dpkg-architecture -qDEB_HOST_ARCH)"
 
 if [[ "${DEB_ARCH}" != arm64 ]]; then
     echo "This package is built natively for arm64; host is ${DEB_ARCH}." >&2
@@ -61,10 +68,6 @@ if [[ -e "${INSTALL_PREFIX}" ]]; then
     echo "colcon would resolve against it rather than the tree being built." >&2
     exit 1
 fi
-
-for tool in vcs colcon dpkg-deb; do
-    command -v "${tool}" >/dev/null || { echo "Missing required tool: ${tool}" >&2; exit 1; }
-done
 
 # ------------------------------------------------------------------ version --
 
