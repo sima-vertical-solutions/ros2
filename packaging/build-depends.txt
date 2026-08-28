@@ -63,6 +63,7 @@ pyqt5-dev
 pyqt5-dev-tools
 python3-catkin
 python3-dev
+python3-empy
 python3-flake8
 python3-flake8-builtins
 python3-flake8-comprehensions
@@ -71,6 +72,7 @@ python3-flake8-import-order
 python3-flake8-quotes
 python3-lark
 python3-mypy
+python3-numpy
 python3-packaging
 python3-pycodestyle
 python3-pyqt5
