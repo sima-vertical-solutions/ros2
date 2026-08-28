@@ -1,0 +1,40 @@
+# Build environment for the ros2 Debian package.
+#
+# Plain Debian bookworm. Nothing from eLxr or repo.sima.ai, because ros2.yaml
+# depends on neither: its 84 build dependencies and 50 runtime dependencies are
+# all stock Debian. eLxr "aria" is bookworm at identical versions and is only a
+# subset of it, and the base packages SiMa republishes are stock versions too,
+# so adding either repository changes nothing about how these deps resolve.
+#
+# Packages that DO need SiMa (simaai-rtabmap needs libg2o-dev and
+# simaai-rtabmap-dev, both published to repo.sima.ai) are built in the ROS 2
+# SDK image instead. This image is deliberately the smaller, lower tier.
+#
+# Run this on an arm64 host. Everything here is native; there is no sysroot and
+# no qemu, which is what lets the colcon invocation drop the cross-compilation
+# flags the eLxr recipe needed.
+
+FROM debian:bookworm
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY packaging/build-depends.txt /tmp/build-depends.txt
+
+RUN apt-get update --allow-releaseinfo-change && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates python3-pip && \
+    xargs -a /tmp/build-depends.txt apt-get install -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+# bookworm packages colcon and vcstool, but ros2.yaml installs these from pip
+# because the packaged colcon lacks extensions the build uses.
+RUN pip install --break-system-packages --no-cache-dir \
+        vcstool colcon-common-extensions mcap-ros2-support
+
+# This image exists to NOT have ROS 2 in it. If a future edit installs the
+# ros2 package, colcon would resolve against /usr/local/ros2 instead of the
+# tree being built -- fail here rather than six hours into a build.
+RUN test ! -e /usr/local/ros2
+
+WORKDIR /workspace
