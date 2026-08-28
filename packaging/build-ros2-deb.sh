@@ -47,7 +47,7 @@ log() { printf '\n=== %s ===\n' "$*"; }
 # Checked before anything uses them, so a missing tool names itself rather than
 # surfacing as "command not found" from whichever line happened to run first.
 # dpkg-architecture and dpkg-deb both come from dpkg-dev.
-for tool in vcs colcon dpkg-architecture dpkg-deb; do
+for tool in vcs colcon dpkg-architecture dpkg-deb cc c++ make; do
     command -v "${tool}" >/dev/null || { echo "Missing required tool: ${tool}" >&2; exit 1; }
 done
 

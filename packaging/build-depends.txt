@@ -1,4 +1,5 @@
 ament-cmake-ros
+build-essential
 clang-format
 clang-tidy
 cmake
@@ -59,6 +60,7 @@ pybind11-dev
 pydocstyle
 pyflakes3
 pyqt5-dev
+pyqt5-dev-tools
 python3-catkin
 python3-dev
 python3-flake8
@@ -67,19 +69,23 @@ python3-flake8-comprehensions
 python3-flake8-docstrings
 python3-flake8-import-order
 python3-flake8-quotes
+python3-lark
 python3-mypy
 python3-packaging
 python3-pycodestyle
+python3-pyqt5
 python3-pytest
 python3-pytest-cov
 python3-pytest-mock
 python3-pytest-timeout
 python3-rosdep2
 python3-setuptools
+python3-sip
 python3-sip-dev
 python3-wheel
 qt5-qmake
 qtbase5-dev
 sip-dev
 uncrustify
+xorg
 xorg-dev
