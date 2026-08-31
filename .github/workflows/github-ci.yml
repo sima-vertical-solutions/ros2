@@ -62,6 +62,26 @@ jobs:
           sudo docker image prune --all --force >/dev/null 2>&1 || true
           echo "after:"; df -h /
 
+      # The staged tree depends only on ros2.repos, the build dependencies and
+      # the Dockerfile. None of those change when the packaging script is being
+      # fixed, so cache it: a packaging-only change then costs about three
+      # minutes instead of thirty-five.
+      - name: Restore the staged ROS 2 tree
+        id: stage-cache
+        uses: actions/cache@v4
+        with:
+          path: stage.tar
+          key: ros2-stage-${{ hashFiles('ros2.repos', 'packaging/build-depends.txt', 'packaging/Dockerfile.build') }}
+
+      - name: Unpack the cached tree
+        if: steps.stage-cache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p .build
+          sudo tar -xf stage.tar -C .build
+          echo "SKIP_COLCON=1" >> "${GITHUB_ENV}"
+          du -sh .build/stage
+
       - name: Build the container
         run: |
           set -euo pipefail
@@ -85,6 +105,7 @@ jobs:
             --env GIT_CONFIG_COUNT=1 \
             --env GIT_CONFIG_KEY_0=safe.directory \
             --env GIT_CONFIG_VALUE_0=/workspace \
+            --env SKIP_COLCON="${SKIP_COLCON:-}" \
             ros2-build:${GITHUB_SHA} \
             packaging/build-ros2-deb.sh
 
@@ -98,11 +119,18 @@ jobs:
           echo "deb=${deb}"         >> "${GITHUB_OUTPUT}"
           df -h /
 
+      - name: Pack the staged tree for the cache
+        if: steps.stage-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          sudo tar -cf stage.tar -C .build stage
+          ls -lh stage.tar
+
       - name: Drop the build tree before uploading
         # .build holds the colcon workspace; only dist/ is wanted from here on.
         # sudo because the build ran as root inside the container, so the tree
         # is root-owned and the runner user cannot remove it.
-        run: sudo rm -rf .build && df -h /
+        run: sudo rm -rf .build && df -h /   # stage.tar lives outside .build
 
       - name: Make the package readable by the runner user
         # dist/ is root-owned for the same reason; upload-artifact runs as the

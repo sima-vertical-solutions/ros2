@@ -26,6 +26,7 @@
 #   WORKDIR         scratch root                   (default /workspace/.build)
 #   DISTDIR         where the .deb is written      (default /workspace/dist)
 #   PKG_VERSION     overrides the version derived from git tags
+#   SKIP_COLCON     reuse an already-staged tree instead of rebuilding
 #   TAG_PREFIX      release tag namespace          (default sima/jazzy/v)
 #   COLCON_WORKERS  parallel colcon packages       (default from available RAM)
 
@@ -137,6 +138,11 @@ log "ros2 ${PKG_VERSION} (${DEB_ARCH}), ${COLCON_WORKERS} workers, $(nproc) cpus
 
 # --------------------------------------------------------------- fetch --
 
+if [[ -n "${SKIP_COLCON:-}" && -d "${STAGE}${INSTALL_PREFIX}" ]]; then
+    log "Reusing the staged tree; skipping fetch and colcon"
+    mkdir -p "${DISTDIR}"
+else
+
 log "Importing sources from ros2.repos"
 
 rm -rf "${WORKDIR}"
@@ -197,6 +203,8 @@ colcon build \
     --cmake-args \
         -DBUILD_TESTING=OFF \
         -DCMAKE_BUILD_TYPE=Release
+
+fi   # end SKIP_COLCON
 
 # colcon writes its own absolute paths into the generated setup scripts and
 # CMake config files. They currently point at the staging directory; strip that
