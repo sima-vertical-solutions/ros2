@@ -168,23 +168,32 @@ jobs:
               # installable from a stock bookworm base.
               apt-get install -y -qq /dist/ros2_*.deb
 
-              # Report every unresolved shared library at once. Without
-              # this the first failing import ends the run, so a package
-              # missing several libraries costs one round trip each.
-              echo "--- checking for unresolved libraries ---"
-              missing="$(find /usr/local/ros2 -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
-                | xargs -0 -r -n1 ldd 2>/dev/null \
-                | grep "not found" | sort -u || true)"
-              if [ -n "${missing}" ]; then
-                echo "${missing}"
-                echo "--- the runtime dependencies above are undeclared ---"
-                exit 1
-              fi
-              echo "none"
-
               set +u
               source /usr/local/ros2/local_setup.bash
               set -u
+
+              # Report every unresolved system library at once, rather than
+              # one per run as imports fail.
+              #
+              # The setup script must be sourced first: most of what the tree
+              # links against is built by the tree itself and is found through
+              # LD_LIBRARY_PATH, not from a system path. Anything the package
+              # ships is discounted for the same reason -- ldd reports those as
+              # missing whenever the loader search path does not happen to
+              # cover the directory it lives in.
+              echo "--- unresolved system libraries ---"
+              find /usr/local/ros2 -name "*.so*" -printf "%f\n" | sort -u > /tmp/shipped
+              find /usr/local/ros2 -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
+                | xargs -0 -r -n1 ldd 2>/dev/null \
+                | sed -n "s/^[[:space:]]*\([^[:space:]]*\) => not found.*/\1/p" \
+                | sort -u > /tmp/unresolved
+              comm -23 /tmp/unresolved /tmp/shipped > /tmp/missing
+              if [ -s /tmp/missing ]; then
+                cat /tmp/missing
+                echo "--- undeclared runtime dependencies; add them to packaging/runtime-depends.txt ---"
+                exit 1
+              fi
+              echo "none"
 
               ros2 --help > /dev/null
               ros2 pkg prefix rosbag2_storage
