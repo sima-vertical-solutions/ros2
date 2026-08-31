@@ -203,16 +203,38 @@ colcon build \
 # so they resolve correctly once the package is installed at ${INSTALL_PREFIX}.
 log "Rewriting staging paths in generated files"
 
-find "${STAGE}${INSTALL_PREFIX}" -type f \
-    \( -name '*.sh'  -o -name '*.bash' -o -name '*.zsh' \
-    -o -name '*.py'  -o -name '*.ps1'  -o -name '*.cmake' \) \
-    -exec sed -i "s|${STAGE}||g" {} +
+# ros2.yaml matched a fixed list of extensions here (*.sh, *.bash, *.zsh,
+# *.py, *.ps1, *.cmake). That misses
+# share/ament_index/resource_index/parent_prefix_path/<pkg>, which has no
+# extension and holds the prefix path ament_index resolves against at runtime
+# -- so the published package almost certainly carries a build-machine path in
+# every one of those files.
+#
+# Selecting by content instead of by name means the rewrite and the check below
+# operate on exactly the same set and cannot disagree. grep -I skips binaries,
+# which must not be sed-ed.
+mapfile -t rewrite < <(grep -rIl "${STAGE}" "${STAGE}${INSTALL_PREFIX}" || true)
+if (( ${#rewrite[@]} > 0 )); then
+    printf '%s\0' "${rewrite[@]}" | xargs -0 sed -i "s|${STAGE}||g"
+    echo "rewrote ${#rewrite[@]} files"
+fi
 
 leftovers="$(grep -rIl "${STAGE}" "${STAGE}${INSTALL_PREFIX}" || true)"
 if [[ -n "${leftovers}" ]]; then
     echo "Staging path still present in installed files after rewrite:" >&2
     printf '%s\n' "${leftovers}" | head -20 >&2
     exit 1
+fi
+
+# Binaries are excluded above, but a staging path baked into an RPATH would be
+# just as broken. Report rather than fail: this has never been checked before,
+# and a first run should not be gated on an unknown.
+if command -v readelf >/dev/null; then
+    while IFS= read -r so; do
+        if readelf -d "${so}" 2>/dev/null | grep -q "${STAGE}"; then
+            echo "WARNING: staging path in RPATH: ${so}" >&2
+        fi
+    done < <(find "${STAGE}${INSTALL_PREFIX}" -name '*.so*' -type f | head -200)
 fi
 
 # ---------------------------------------------------------------- package --
