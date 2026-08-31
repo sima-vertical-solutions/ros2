@@ -100,7 +100,14 @@ jobs:
 
       - name: Drop the build tree before uploading
         # .build holds the colcon workspace; only dist/ is wanted from here on.
-        run: rm -rf .build && df -h /
+        # sudo because the build ran as root inside the container, so the tree
+        # is root-owned and the runner user cannot remove it.
+        run: sudo rm -rf .build && df -h /
+
+      - name: Make the package readable by the runner user
+        # dist/ is root-owned for the same reason; upload-artifact runs as the
+        # runner user.
+        run: sudo chown -R "$(id -u):$(id -g)" dist && ls -l dist
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
