@@ -150,6 +150,12 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04-arm
     steps:
+      # Needed for packaging/smoke-test.sh; the artifact carries only the deb.
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
       - name: Download the package
         uses: actions/download-artifact@v4
         with:
@@ -161,44 +167,8 @@ jobs:
           set -euo pipefail
           docker run --rm \
             --volume "${PWD}/dist:/dist:ro" \
-            debian:bookworm bash -euo pipefail -c '
-              apt-get update -qq
-              # Resolves the package'"'"'s declared runtime dependencies from
-              # Debian, which is the assertion that matters: the deb has to be
-              # installable from a stock bookworm base.
-              apt-get install -y -qq /dist/ros2_*.deb
-
-              set +u
-              source /usr/local/ros2/local_setup.bash
-              set -u
-
-              # Report every unresolved system library at once, rather than
-              # one per run as imports fail.
-              #
-              # The setup script must be sourced first: most of what the tree
-              # links against is built by the tree itself and is found through
-              # LD_LIBRARY_PATH, not from a system path. Anything the package
-              # ships is discounted for the same reason -- ldd reports those as
-              # missing whenever the loader search path does not happen to
-              # cover the directory it lives in.
-              echo "--- unresolved system libraries ---"
-              find /usr/local/ros2 -name "*.so*" -printf "%f\n" | sort -u > /tmp/shipped
-              find /usr/local/ros2 -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
-                | xargs -0 -r -n1 sh -c 'ldd "$0" 2>/dev/null || true' \
-                | sed -n "s/^[[:space:]]*\([^[:space:]]*\) => not found.*/\1/p" \
-                | sort -u > /tmp/unresolved
-              comm -23 /tmp/unresolved /tmp/shipped > /tmp/missing
-              if [ -s /tmp/missing ]; then
-                cat /tmp/missing
-                echo "--- undeclared runtime dependencies; add them to packaging/runtime-depends.txt ---"
-                exit 1
-              fi
-              echo "none"
-
-              ros2 --help > /dev/null
-              ros2 pkg prefix rosbag2_storage
-              echo "ros2 package installs and runs."
-            '
+            --volume "${PWD}/packaging:/packaging:ro" \
+            debian:bookworm /packaging/smoke-test.sh
 
   resolve-config:
     name: Resolve Vulcan config
