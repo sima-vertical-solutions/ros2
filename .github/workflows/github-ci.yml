@@ -184,7 +184,7 @@ jobs:
               echo "--- unresolved system libraries ---"
               find /usr/local/ros2 -name "*.so*" -printf "%f\n" | sort -u > /tmp/shipped
               find /usr/local/ros2 -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
-                | xargs -0 -r -n1 ldd 2>/dev/null \
+                | xargs -0 -r -n1 sh -c 'ldd "$0" 2>/dev/null || true' \
                 | sed -n "s/^[[:space:]]*\([^[:space:]]*\) => not found.*/\1/p" \
                 | sort -u > /tmp/unresolved
               comm -23 /tmp/unresolved /tmp/shipped > /tmp/missing
