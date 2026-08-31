@@ -21,6 +21,13 @@ on:
     tags:
       - sima/jazzy/v*
   workflow_dispatch:
+    inputs:
+      vulcan_env:
+        description: Vulcan store to publish to. Blank uses the VULCAN_ENV repo variable, then stg.
+        required: false
+        default: ""
+        type: choice
+        options: ["", "stg", "prod"]
 
 permissions:
   contents: read
@@ -200,7 +207,7 @@ jobs:
       id-token: write
     uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
     with:
-      vulcan_env: ${{ vars.VULCAN_ENV || 'stg' }}
+      vulcan_env: ${{ inputs.vulcan_env || vars.VULCAN_ENV || 'stg' }}
 
   publish:
     name: Publish to Vulcan
