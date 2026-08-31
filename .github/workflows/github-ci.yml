@@ -168,6 +168,20 @@ jobs:
               # installable from a stock bookworm base.
               apt-get install -y -qq /dist/ros2_*.deb
 
+              # Report every unresolved shared library at once. Without
+              # this the first failing import ends the run, so a package
+              # missing several libraries costs one round trip each.
+              echo "--- checking for unresolved libraries ---"
+              missing="$(find /usr/local/ros2 -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
+                | xargs -0 -r -n1 ldd 2>/dev/null \
+                | grep "not found" | sort -u || true)"
+              if [ -n "${missing}" ]; then
+                echo "${missing}"
+                echo "--- the runtime dependencies above are undeclared ---"
+                exit 1
+              fi
+              echo "none"
+
               set +u
               source /usr/local/ros2/local_setup.bash
               set -u
