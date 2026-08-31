@@ -74,24 +74,25 @@ fi
 
 # Derived from git tags, so a published package traces to one immutable ref.
 #
-#   at tag sima/jazzy/v2.0.1  -> 2.0.1
+#   at tag v2.0.1            -> 2.0.1
 #   7 commits after it        -> 2.0.1+7.gabc123def456   (sorts ABOVE 2.0.1)
 #   no such tag yet           -> 0~untagged.<date>.<sha> (sorts below everything)
 #
-# The tag namespace mirrors the branch namespace. These are SiMa package
-# versions, not upstream ROS 2 versions -- upstream has no 2.0.x, and this
-# repository is a fork of ros2/ros2 carrying 114 of upstream's own tags. A bare
+# These are SiMa package versions, not upstream ROS 2 versions -- upstream has
+# no 2.0.x, and this fork carries 114 of upstream's own tags. A bare
 # `git describe --tags` here resolves to release-eloquent-20200124, which would
-# version a Jazzy package after a ROS 2 release that went EOL in 2021. Scoping
-# the match is what prevents that, and it keeps our tags legible next to
-# upstream's after a `git merge upstream/jazzy` brings more of them in.
+# version a Jazzy package after a ROS 2 release that went EOL in 2021. Matching
+# v* prevents that: none of upstream's 114 tags start with v.
 #
-# The distro is in the prefix so a future sima/kilted branch gets its own
-# version line instead of describing off a jazzy tag.
+# No slash in the prefix, deliberately. A tag build publishes under the tag as
+# its ref, and a slash is percent-encoded into the S3 key and again for the
+# CDN -- so sima/jazzy/v2.0.1 would need sima%252Fjazzy%252Fv2.0.1 in a URL,
+# the same trap the branch rename removed. v2.0.1 stays v2.0.1, and installs
+# as `sima-cli neat install ros2@v2.0.1`.
 #
 # Requires full history and tags: pass fetch_depth: 0 to vulcan-build.yml, or
 # actions/checkout with fetch-depth: 0 and fetch-tags: true.
-TAG_PREFIX="${TAG_PREFIX:-sima/jazzy/v}"
+TAG_PREFIX="${TAG_PREFIX:-v}"
 
 if [[ -z "${PKG_VERSION:-}" ]]; then
     _sha="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo nogit)"
@@ -100,7 +101,7 @@ if [[ -z "${PKG_VERSION:-}" ]]; then
     if _tag="$(git -C "${REPO_ROOT}" describe --tags --exact-match --match "${_match}" 2>/dev/null)"; then
         PKG_VERSION="${_tag#"${TAG_PREFIX}"}"
     elif _desc="$(git -C "${REPO_ROOT}" describe --tags --long --match "${_match}" 2>/dev/null)"; then
-        # sima/jazzy/v2.0.1-7-gabc123 -> 2.0.1+7.gabc123
+        # v2.0.1-7-gabc123 -> 2.0.1+7.gabc123
         _base="${_desc%-*-g*}"
         _count="${_desc#"${_base}"-}"; _count="${_count%%-g*}"
         PKG_VERSION="${_base#"${TAG_PREFIX}"}+${_count}.g${_sha}"

@@ -19,7 +19,7 @@ on:
     branches:
       - main
     tags:
-      - sima/jazzy/v*
+      - v*
   workflow_dispatch:
     inputs:
       vulcan_env:
