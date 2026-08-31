@@ -241,7 +241,11 @@ fi
 
 log "Assembling the Debian package"
 
-DEPENDS="$(grep -vE '^\s*(#|$)' "${REPO_ROOT}/packaging/runtime-depends.txt" | paste -sd ', ' -)"
+# paste -d takes a LIST of delimiters and cycles through them, so -d ', '
+# alternates comma and space and yields "acl,curl file,graphviz". Join on a
+# single comma, then space it out.
+DEPENDS="$(grep -vE '^\s*(#|$)' "${REPO_ROOT}/packaging/runtime-depends.txt" \
+    | paste -sd , - | sed 's/,/, /g')"
 INSTALLED_KB="$(du -sk "${STAGE}" | cut -f1)"
 
 mkdir -p "${STAGE}/DEBIAN"
@@ -257,6 +261,10 @@ if grep -q '@[A-Z_]*@' "${STAGE}/DEBIAN/control"; then
     grep -n '@[A-Z_]*@' "${STAGE}/DEBIAN/control" >&2
     exit 1
 fi
+
+echo "--- DEBIAN/control ---"
+cat "${STAGE}/DEBIAN/control"
+echo "---------------------"
 
 DEB="${DISTDIR}/ros2_${PKG_VERSION}_${DEB_ARCH}.deb"
 dpkg-deb --root-owner-group --build "${STAGE}" "${DEB}"
