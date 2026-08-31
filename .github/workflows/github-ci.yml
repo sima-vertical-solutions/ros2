@@ -17,7 +17,7 @@ name: Build ros2 package (GitHub runners)
 on:
   push:
     branches:
-      - sima/jazzy
+      - main
     tags:
       - sima/jazzy/v*
   workflow_dispatch:
@@ -137,6 +137,28 @@ jobs:
         # runner user.
         run: sudo chown -R "$(id -u):$(id -g)" dist && ls -l dist
 
+      - name: Add sima-cli package metadata
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet --upgrade pip
+          .venv/bin/pip install --quiet sima-cli
+
+          cp packaging/install-package.sh dist/
+
+          # --name ros2 with the artifact published at the root of the commit
+          # prefix is what makes the install target a bare "ros2".
+          SIMA_CLI_CHECK_FOR_UPDATE=0 .venv/bin/sima-cli packages build dist \
+            --name ros2 \
+            --version "${{ steps.build.outputs.version }}" \
+            --description "ROS 2 Jazzy for Modalix, including the SiMa rosbag2 fork" \
+            --install-script install-package.sh \
+            --host-platform linux \
+            --host-arch arm64 \
+            --board-platform modalix
+
+          cat dist/metadata.json
+
       - name: Upload the package
         uses: actions/upload-artifact@v4
         with:
@@ -200,10 +222,13 @@ jobs:
       role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
       sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
       cloudfront_distribution_id: ${{ needs.resolve-config.outputs.artifact_cloudfront_distribution_id }}
-      artifact_folder: arm64
+      # Root of the commit prefix, so the install target is "ros2" rather
+      # than "ros2/arm64".
+      artifact_folder: "."
+
       artifact_pattern: ros2-deb-arm64
       artifact_glob: "*"
-      min_artifact_count: 1
+      min_artifact_count: 3
       publish_manifest: true
       cleanup_github_artifacts: true
 
@@ -222,7 +247,8 @@ jobs:
       bucket: ${{ needs.resolve-config.outputs.artifact_bucket }}
       role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
       sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
-      artifact_folder: arm64
+      artifact_folder: "."
+
       validate_manifest: true
 
 # edgematic-studio additionally runs a `verify-published` job between publish
