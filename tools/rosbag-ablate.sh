@@ -18,11 +18,13 @@
 # invalidates any CPU comparison across configurations, since the cheaper-
 # looking run was simply doing less work than it was asked to.
 #
-#     ./rosbag-ablate.sh                   # full series, 60 s per run
-#     ./rosbag-ablate.sh -w 30 --repeat-control
-#     ./rosbag-ablate.sh --topics-from 1234
+#     ./rosbag-ablate.sh -c vista_v1_config.yaml               # full series, 60 s/run
+#     ./rosbag-ablate.sh -c vista_v1_config.yaml --repeat-control
+#     ./rosbag-ablate.sh --topics-from 1234                    # or lift from a live recorder
 #
-# Stop the normal recorder first -- this starts its own.
+# Stop the normal recorder first -- this starts its own. Taking the topic list
+# from the config rather than from a running recorder means nothing has to be
+# running when you start.
 # Needs mcap-topic-breakdown.py beside it.
 
 set -uo pipefail
@@ -36,6 +38,7 @@ SETTLE=12
 OUTDIR=""
 FROMPID=""
 TOPICSFILE=""
+CONFIG=""
 COMPRESS=1
 RECONTROL=0
 
@@ -44,6 +47,7 @@ while (( $# )); do
         -w|--window) WINDOW="$2"; shift 2 ;;
         -s|--settle) SETTLE="$2"; shift 2 ;;
         -o|--outdir) OUTDIR="$2"; shift 2 ;;
+        -c|--config) CONFIG="$2"; shift 2 ;;
         --topics-from) FROMPID="$2"; shift 2 ;;
         --topics-file) TOPICSFILE="$2"; shift 2 ;;
         --no-compression) COMPRESS=0; shift ;;
@@ -86,18 +90,43 @@ ORDER=(imu-raw imu-filtered pb-twist tf nav-debug color-raw rtabmap-heavy segmen
 
 # --------------------------------------------------------- the full list --
 
+# Read the rosbag.topics allowlist out of a system config yaml. Verified to
+# reproduce the deployed recorder's list exactly from vista_v1_config.yaml.
+# Hand-rolled rather than via a yaml module so this stays dependency-free.
+topics_from_config() {
+    awk '
+      /^[a-zA-Z_]/ { inrb = ($0 ~ /^rosbag:/); intopics = 0 }
+      inrb && /^[[:space:]]+topics:[[:space:]]*$/ { intopics = 1; next }
+      inrb && intopics && /^[[:space:]]+[a-zA-Z_]+:/ { intopics = 0 }
+      inrb && intopics && /^[[:space:]]*-[[:space:]]+\// {
+          sub(/^[[:space:]]*-[[:space:]]+/, ""); sub(/[[:space:]]+#.*$/, ""); sub(/[[:space:]]+$/, "")
+          print
+      }' "$1"
+}
+
 declare -a FULL=()
 if [[ -n "${TOPICSFILE}" ]]; then
     mapfile -t FULL < <(grep -v '^[[:space:]]*$' "${TOPICSFILE}")
+elif [[ -n "${CONFIG}" ]]; then
+    [[ -r "${CONFIG}" ]] || { echo "cannot read ${CONFIG}" >&2; exit 1; }
+    mapfile -t FULL < <(topics_from_config "${CONFIG}")
+    echo "Read ${#FULL[@]} topics from $(basename "${CONFIG}")."
 else
     src="${FROMPID:-$(pgrep -f 'ros2 bag record' | head -1)}"
     [[ -z "${src}" || ! -r "/proc/${src}/cmdline" ]] && {
-        echo "No recorder to copy the topic list from; pass --topics-from PID or --topics-file." >&2
+        echo "No topic list. Pass --config vista_v1_config.yaml (easiest)," >&2
+        echo "or --topics-file FILE, or --topics-from PID." >&2
         exit 1; }
     mapfile -t FULL < <(tr '\0' '\n' < "/proc/${src}/cmdline" | grep '^/')
     echo "Lifted ${#FULL[@]} topics from pid ${src}. Stop that recorder before trusting results."
 fi
-(( ${#FULL[@]} < 5 )) && { echo "Topic list looks wrong (${#FULL[@]} entries)." >&2; exit 1; }
+if (( ${#FULL[@]} < 5 )); then
+    echo "Only ${#FULL[@]} topics found." >&2
+    [[ -n "${CONFIG}" ]] && echo "That config has no rosbag.topics allowlist -- configs like
+isaac_hil.yaml record with '-a' plus exclude_topics instead, which has no
+explicit list to ablate. Use a config with a topics: block, or --topics-file." >&2
+    exit 1
+fi
 
 # ------------------------------------------------------------------ utils --
 
