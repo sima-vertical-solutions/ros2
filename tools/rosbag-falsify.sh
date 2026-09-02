@@ -55,6 +55,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BREAKDOWN="${HERE}/mcap-topic-breakdown.py"
 HZ="$(getconf CLK_TCK)"
 
+# Fail loudly here rather than silently recording nothing. `ros2` is missing
+# whenever the ROS environment has not been sourced, which is the normal state
+# of a fresh non-interactive ssh session.
+if ! command -v ros2 >/dev/null 2>&1; then
+    echo "ros2 is not on PATH -- source the ROS setup first, e.g." >&2
+    echo "  source /usr/local/ros2/setup.bash" >&2
+    exit 1
+fi
+[[ -r "${BREAKDOWN}" ]] || { echo "mcap-topic-breakdown.py must sit beside this script." >&2; exit 1; }
+
 # The four topics carrying ~57% of messages and ~4% of bytes, per the bag audit.
 CUT=(
     /sima/sensors/base/imu/imu_raw
@@ -142,12 +152,20 @@ measure() {
     local bag="${OUTDIR}/${tag}"
     rm -rf "${bag}"
 
-    ros2 bag record -o "${bag}" --storage-preset-profile zstd_fast "$@" >/dev/null 2>&1 &
+    # Progress goes to stderr: stdout is consumed by the caller's `read`.
+    echo "   [${tag}] starting recorder, settling ${SETTLE}s..." >&2
+    ros2 bag record -o "${bag}" --storage-preset-profile zstd_fast "$@" \
+        >"${OUTDIR}/${tag}.log" 2>&1 &
     local rec=$!
     sleep "${SETTLE}"
-    kill -0 "${rec}" 2>/dev/null || { echo "0 0 0"; return; }
+    if ! kill -0 "${rec}" 2>/dev/null; then
+        echo "   [${tag}] recorder died during settle. Last lines of its log:" >&2
+        tail -5 "${OUTDIR}/${tag}.log" >&2
+        echo "0 0 0"; return
+    fi
 
     local t0 w0 t1 w1
+    echo "   [${tag}] measuring for ${WINDOW}s..." >&2
     t0="$(cpu_ticks "${rec}")"; w0="$(date +%s.%N)"
     sleep "${WINDOW}"
     t1="$(cpu_ticks "${rec}")"; w1="$(date +%s.%N)"
@@ -179,6 +197,8 @@ echo " A = full list          : ${#FULL[@]} topics"
 echo " B = A minus ${removed} topics : ${#REDUCED[@]} topics"
 for c in "${CUT[@]}"; do echo "     removed: ${c}"; done
 echo " ${REPEATS} repeats, ${WINDOW}s each, alternating A/B"
+echo " about $(( REPEATS * 2 * (SETTLE + WINDOW) / 60 + 1 )) minutes. Each run is silent"
+echo " for $(( SETTLE + WINDOW ))s before its row appears -- that is normal, let it finish."
 echo "--------------------------------------------------------------"
 printf "%-8s %8s %10s %9s\n" "run" "cores" "msgs/s" "MB/s"
 
