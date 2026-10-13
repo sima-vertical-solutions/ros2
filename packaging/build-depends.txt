@@ -83,12 +83,9 @@ python3-pytest-mock
 python3-pytest-timeout
 python3-rosdep2
 python3-setuptools
-python3-sip
-python3-sip-dev
 python3-wheel
 qt5-qmake
 qtbase5-dev
-sip-dev
 uncrustify
 xorg
 xorg-dev

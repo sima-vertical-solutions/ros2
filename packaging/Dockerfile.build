@@ -1,5 +1,12 @@
 # Build environment for the ros2 Debian package.
 #
+# TRIXIE BRANCH (sima/jazzy-trixie): the same build on Debian 13, for eLxr 3.0.0,
+# whose base is trixie with Python 3.13. The bookworm notes below still describe
+# sima/jazzy; on this branch read "trixie" for "bookworm" and "eLxr 3.0" for "aria".
+# Dependency changes against bookworm: python3-sip, python3-sip-dev and sip-dev
+# are gone from trixie (sip4 was removed; they only build rqt's Python Qt
+# bindings), and OpenCV is 4.10, so the runtime libs are libopencv-*410.
+#
 # Plain Debian bookworm. Nothing from eLxr or repo.sima.ai, because ros2.yaml
 # depends on neither: its 84 build dependencies and 50 runtime dependencies are
 # all stock Debian. eLxr "aria" is bookworm at identical versions and is only a
@@ -14,7 +21,7 @@
 # no qemu, which is what lets the colcon invocation drop the cross-compilation
 # flags the eLxr recipe needed.
 
-FROM debian:bookworm
+FROM debian:trixie
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive

@@ -1,4 +1,10 @@
-name: Build ros2 package (GitHub runners)
+name: Build ros2 package for trixie (GitHub runners)
+
+# TRIXIE BRANCH (sima/jazzy-trixie): builds the same package on Debian 13 for
+# eLxr 3.0.0 and STOPS AFTER THE SMOKE TEST. The Vulcan publish and promote jobs
+# of sima/jazzy are removed here on purpose: this package is named `ros2` too,
+# and publishing it would put a trixie build where bookworm installs look for
+# theirs. Take the .deb from the run's artifact.
 
 # Builds the ros2 Debian package on GitHub's own ARM64 runners and publishes it
 # to Vulcan.
@@ -21,13 +27,6 @@ on:
     tags:
       - v*
   workflow_dispatch:
-    inputs:
-      vulcan_env:
-        description: Vulcan store to publish to. Blank uses the VULCAN_ENV repo variable, then stg.
-        required: false
-        default: ""
-        type: choice
-        options: ["", "stg", "prod"]
 
 permissions:
   contents: read
@@ -175,7 +174,7 @@ jobs:
           retention-days: 14
 
   test-install:
-    name: Install the package in clean bookworm
+    name: Install the package in clean trixie
     needs: build
     runs-on: ubuntu-24.04-arm
     steps:
@@ -197,71 +196,4 @@ jobs:
           docker run --rm \
             --volume "${PWD}/dist:/dist:ro" \
             --volume "${PWD}/packaging:/packaging:ro" \
-            debian:bookworm /packaging/smoke-test.sh
-
-  resolve-config:
-    name: Resolve Vulcan config
-    needs: test-install
-    permissions:
-      contents: read
-      id-token: write
-    uses: sima-neat/.github/.github/workflows/vulcan-resolve-config.yml@main
-    with:
-      vulcan_env: ${{ inputs.vulcan_env || vars.VULCAN_ENV || 'stg' }}
-
-  publish:
-    name: Publish to Vulcan
-    # build -> test -> publish. The house guide is explicit that publishing an
-    # untested artifact is wrong, so test-install gates this.
-    needs:
-      - build
-      - test-install
-      - resolve-config
-    permissions:
-      contents: read
-      id-token: write
-      actions: write
-    uses: sima-neat/.github/.github/workflows/vulcan-publish-artifacts.yml@main
-    with:
-      aws_region: ${{ needs.resolve-config.outputs.aws_region }}
-      environment_name: ${{ needs.resolve-config.outputs.vulcan_env }}
-      bucket: ${{ needs.resolve-config.outputs.artifact_bucket }}
-      role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
-      sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
-      cloudfront_distribution_id: ${{ needs.resolve-config.outputs.artifact_cloudfront_distribution_id }}
-      # Root of the commit prefix, so the install target is "ros2" rather
-      # than "ros2/arm64".
-      artifact_folder: "."
-
-      artifact_pattern: ros2-deb-arm64
-      artifact_glob: "*"
-      min_artifact_count: 3
-      publish_manifest: true
-      cleanup_github_artifacts: true
-
-  promote-latest:
-    name: Promote latest.tag
-    needs:
-      - resolve-config
-      - publish
-    permissions:
-      contents: read
-      id-token: write
-    uses: sima-neat/.github/.github/workflows/vulcan-update-latest-artifacts.yml@main
-    with:
-      aws_region: ${{ needs.resolve-config.outputs.aws_region }}
-      environment_name: ${{ needs.resolve-config.outputs.vulcan_env }}
-      bucket: ${{ needs.resolve-config.outputs.artifact_bucket }}
-      role_to_assume: ${{ needs.resolve-config.outputs.artifact_publisher_role_arn }}
-      sse_kms_key_id: ${{ needs.resolve-config.outputs.artifact_kms_key_id }}
-      artifact_folder: "."
-
-      validate_manifest: true
-
-# edgematic-studio additionally runs a `verify-published` job between publish
-# and promote-latest, reinstalling from the CDN through sima-cli. Left out here
-# because vulcan-publish-artifacts exposes no outputs, so the published URL
-# would have to be reconstructed -- and the branch segment is percent-encoded
-# once for the S3 key and again for the viewer path, which is easy to get
-# wrong. Worth adding once a real publish shows the actual URL. The publish
-# workflow does run its own CloudFront verification internally.
+            debian:trixie /packaging/smoke-test.sh
