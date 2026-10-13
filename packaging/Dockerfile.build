@@ -5,7 +5,9 @@
 # sima/jazzy; on this branch read "trixie" for "bookworm" and "eLxr 3.0" for "aria".
 # Dependency changes against bookworm: python3-sip, python3-sip-dev and sip-dev
 # are gone from trixie (sip4 was removed; they only build rqt's Python Qt
-# bindings), and OpenCV is 4.10, so the runtime libs are libopencv-*410.
+# bindings), and OpenCV is 4.10, so the runtime libs are libopencv-*410. trixie's
+# yaml-cpp 0.8 satisfies yaml_cpp_vendor, which on bookworm built its own copy
+# into the package, so libyaml-cpp0.8 is a runtime dependency here.
 #
 # Plain Debian bookworm. Nothing from eLxr or repo.sima.ai, because ros2.yaml
 # depends on neither: its 84 build dependencies and 50 runtime dependencies are

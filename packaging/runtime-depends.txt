@@ -53,3 +53,4 @@ python3-yaml
 shiboken2
 tango-icon-theme
 xorg
+libyaml-cpp0.8
