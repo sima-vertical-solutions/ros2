@@ -1,10 +1,15 @@
 # Build environment for the ros2 Debian package.
 #
-# Plain Debian bookworm. Nothing from eLxr or repo.sima.ai, because ros2.yaml
-# depends on neither: its 84 build dependencies and 50 runtime dependencies are
-# all stock Debian. eLxr "aria" is bookworm at identical versions and is only a
-# subset of it, and the base packages SiMa republishes are stock versions too,
-# so adding either repository changes nothing about how these deps resolve.
+# Plain Debian trixie. Nothing from eLxr or repo.sima.ai, because ros2.yaml
+# depends on neither: its build and runtime dependencies are all stock Debian.
+# eLxr 3.0 is trixie-based and only a subset of it, and the base packages SiMa
+# republishes are stock versions too, so adding either repository changes
+# nothing about how these deps resolve.
+#
+# Dependency deltas against the bookworm line (tagged v2.1.3): sip4 is gone from
+# trixie, so python3-sip, python3-sip-dev and sip-dev are dropped -- they only
+# built rqt's Python Qt bindings -- and OpenCV is 4.10, so the runtime libs are
+# libopencv-*410.
 #
 # Packages that DO need SiMa (simaai-rtabmap needs libg2o-dev and
 # simaai-rtabmap-dev, both published to repo.sima.ai) are built in the ROS 2
@@ -14,7 +19,7 @@
 # no qemu, which is what lets the colcon invocation drop the cross-compilation
 # flags the eLxr recipe needed.
 
-FROM debian:bookworm
+FROM debian:trixie
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive

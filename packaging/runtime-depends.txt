@@ -9,11 +9,11 @@ libfreetype6
 liblttng-ust1
 liblz4-1
 libncurses6
-libopencv-core406
-libopencv-highgui406
-libopencv-imgcodecs406
-libopencv-imgproc406
-libopencv-videoio406
+libopencv-core410
+libopencv-highgui410
+libopencv-imgcodecs410
+libopencv-imgproc410
+libopencv-videoio410
 libqt5core5a
 libqt5gui5
 libqt5opengl5
@@ -49,8 +49,8 @@ python3-pyqt5.qtsvg
 python3-pyside2.qtsvg
 python3-rosdistro
 python3-rospkg
-python3-sip
 python3-yaml
 shiboken2
 tango-icon-theme
 xorg
+libyaml-cpp0.8

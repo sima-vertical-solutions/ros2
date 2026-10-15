@@ -160,6 +160,10 @@ git -C "${SRC}/ros2/rosbag2" log --oneline -1
 # ------------------------------------------------- Debian bookworm CMake shims --
 #
 # Neither of these is about cross-compilation, so both survive the port.
+# Bookworm only: trixie's yaml-cpp 0.8 exports the namespaced target already, and
+# trixie ships freetype's own config -- writing ours over it would shadow it.
+DISTRO_CODENAME="$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-}")"
+if [[ "${DISTRO_CODENAME}" == bookworm ]]; then
 
 log "Applying Debian bookworm CMake shims"
 
@@ -186,6 +190,10 @@ if(TARGET Freetype::Freetype AND NOT TARGET freetype)
     add_library(freetype ALIAS Freetype::Freetype)
 endif()
 CMAKE
+
+else
+    log "No CMake shims needed on ${DISTRO_CODENAME:-unknown}"
+fi
 
 # ---------------------------------------------------------------- build --
 

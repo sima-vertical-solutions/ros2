@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Smoke-test the built ros2 package in a clean Debian bookworm container.
+# Smoke-test the built ros2 package in a clean Debian trixie container.
 #
 #   docker run --rm \
 #     --volume "${PWD}/dist:/dist:ro" \
 #     --volume "${PWD}/packaging:/packaging:ro" \
-#     debian:bookworm /packaging/smoke-test.sh
+#     debian:trixie /packaging/smoke-test.sh
 #
 # This lives in a file rather than inline in the workflow because inline it
 # needs three levels of quoting -- the YAML block, `bash -c` for docker run,
@@ -18,7 +18,7 @@ PREFIX=/usr/local/ros2
 
 echo "=== installing the package ==="
 apt-get update -qq
-# Installing from a stock bookworm base is the assertion: apt has to satisfy
+# Installing from a stock trixie base is the assertion: apt has to satisfy
 # every dependency the package declares, from Debian alone.
 apt-get install -y -qq /dist/ros2_*.deb
 
