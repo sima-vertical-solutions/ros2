@@ -175,7 +175,7 @@ jobs:
           retention-days: 14
 
   test-install:
-    name: Install the package in clean bookworm
+    name: Install the package in clean trixie
     needs: build
     runs-on: ubuntu-24.04-arm
     steps:
@@ -197,7 +197,7 @@ jobs:
           docker run --rm \
             --volume "${PWD}/dist:/dist:ro" \
             --volume "${PWD}/packaging:/packaging:ro" \
-            debian:bookworm /packaging/smoke-test.sh
+            debian:trixie /packaging/smoke-test.sh
 
   resolve-config:
     name: Resolve Vulcan config
